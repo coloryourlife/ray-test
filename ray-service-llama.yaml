@@ -3,64 +3,81 @@ kind: RayService
 metadata:
   name: llama-service
 spec:
-  serviceUnhealthySecondThreshold: 900
   serveConfigV2: |
     applications:
-      - name: llama-app
+      - name: llama_app
         import_path: llama_service:app
         route_prefix: /
+        deployments:
+          - name: llama_deployment
+            num_replicas: auto
+            max_ongoing_requests: 5
+            autoscaling_config:
+              min_replicas: 1
+              max_replicas: 5
+              target_ongoing_requests: 2
+            ray_actor_options:
+              num_gpus: 1
         runtime_env:
+          working_dir: "https://github.com/coloryourlife/ray-test/blob/28b65039a1c18cdfcffc84ce325d61d285f9dc2f/project.zip"
           pip: ["transformers", "torch"]
   rayClusterConfig:
-    rayVersion: '2.9.0'
     headGroupSpec:
-      serviceType: ClusterIP
       rayStartParams:
         dashboard-host: '0.0.0.0'
       template:
         spec:
           containers:
-            - name: ray-head
-              image: rayproject/ray:2.9.0
-              resources:
-                limits:
-                  cpu: 2
-                  memory: 8Gi
-                requests:
-                  cpu: 2
-                  memory: 8Gi
-              ports:
-                - containerPort: 6379
-                  name: gcs-server
-                - containerPort: 8265
-                  name: dashboard
-                - containerPort: 10001
-                  name: client
-                - containerPort: 8000
-                  name: serve
+          - name: ray-head
+            image: rayproject/ray:2.9.0
+            env:
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-secret
+                  key: hf_api_token
+            resources:
+              limits:
+                cpu: "2"
+                memory: "8Gi"
+              requests:
+                cpu: "2"
+                memory: "8Gi"
+            ports:
+            - containerPort: 6379
+              name: gcs-server
+            - containerPort: 8265
+              name: dashboard
+            - containerPort: 10001
+              name: client
+            - containerPort: 8000
+              name: serve
     workerGroupSpecs:
       - groupName: gpu-worker-group
         replicas: 1
-        minReplicas: 1
-        maxReplicas: 5
         rayStartParams: {}
         template:
           spec:
-            nodeSelector:
-              accelerator: gpu
             tolerations:
-              - key: "nvidia.com/gpu"
-                operator: "Exists"
+              - key: "ray.io/node-type"
+                operator: "Equal"
+                value: "worker"
                 effect: "NoSchedule"
             containers:
-              - name: ray-worker
-                image: rayproject/ray:2.9.0
-                resources:
-                  limits:
-                    cpu: 4
-                    memory: 16Gi
-                    nvidia.com/gpu: 1
-                  requests:
-                    cpu: 4
-                    memory: 16Gi
-                    nvidia.com/gpu: 1
+            - name: ray-worker
+              image: rayproject/ray:2.9.0
+              env:
+                - name: HF_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: hf-secret
+                      key: hf_api_token
+              resources:
+                limits:
+                  cpu: "3.5"
+                  memory: "14Gi"
+                  nvidia.com/gpu: "1"
+                requests:
+                  cpu: "3.5"
+                  memory: "14Gi"
+                  nvidia.com/gpu: "1"
