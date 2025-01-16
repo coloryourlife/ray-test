@@ -56,7 +56,7 @@ class LlamaModel:
             device = "cuda" if torch.cuda.is_available() else "cpu"
             input_ids = self.tokenizer.encode(prompt, return_tensors="pt").to(device)
             output = self.model.generate(input_ids, max_length=100)
-            return "Hello Wrold"
+            return self.tokenizer.decode(output[0], skip_special_tokens=True)
         except Exception as e:
             logger.error(f"Error during inference: {str(e)}")
             return {"error": str(e)}
