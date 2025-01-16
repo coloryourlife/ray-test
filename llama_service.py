@@ -1,12 +1,31 @@
-import ray
-from ray import serve
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from starlette.requests import Request
-import logging
 import os
 import torch
 
-logger = logging.getLogger(__name__)
+from typing import Dict, Optional, List
+import logging
+from pydantic import BaseModel
+from fastapi import FastAPI
+from starlette.requests import Request
+from starlette.responses import StreamingResponse, JSONResponse
+from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+
+from ray import serve
+
+logger = logging.getLogger("ray.serve")
+
+app = FastAPI()
+
+
+class Prompt(BaseModel):
+    text: str
+    temperature: float = 0.2
+    max_new_tokens: int = 512
+    top_p: float = 0.7
+    top_k: int = 50
+    no_repeat_ngram_size: int = 4
+    repetition_penalty: float = 1
+    streaming: bool = False
+    do_sample: bool = False
 
 
 @serve.deployment(
@@ -19,6 +38,7 @@ logger = logging.getLogger(__name__)
         "target_num_ongoing_requests_per_replica": 2,
     }
 )
+@serve.ingress(app)
 class LlamaModel:
     def __init__(self):
         logger.info("Initializing LlamaModel")
@@ -39,6 +59,8 @@ class LlamaModel:
                 use_auth_token=hf_token,
             )
 
+            self.pipe = pipeline("text-generation", model=self.model, tokenizer=self.tokenizer)
+
             if torch.cuda.is_available():
                 self.model.to("cuda")
                 logger.info("Model moved to CUDA")
@@ -50,15 +72,25 @@ class LlamaModel:
             logger.error(f"Error initializing LlamaModel: {str(e)}")
             raise
 
-    async def __call__(self, request: Request):
-        # Check if the request is JSON or form data
-        prompt = await request.json()
-        logger.info(f"Received prompt: {prompt}")
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        input_ids = self.tokenizer.encode(prompt, return_tensors="pt").to(device)
-        output = self.model.generate(input_ids, max_length=100)
-        decoded_output = self.tokenizer.decode(output[0], skip_special_tokens=True)
-        return decoded_output
+    @app.post("/generate")
+    async def generate(self, prompt: Prompt):
+        try:
+            logger.info(f"Prompt Received")
+            output = self.pipe(
+                prompt,
+                return_full_text=False,
+                do_sample=True,
+                max_new_tokens=150,
+                temperature=0.2,
+                top_p=0.7,
+                top_k=50,
+                pad_token_id=self.tokenizer.pad_token_id,
+                early_stopping=False,
+            )
+            return output[0]["generated_text"]
+        except Exception as e:
+            logger.error(f"Error generating text: {str(e)}")
+            return str(e)
 
 
 app = LlamaModel.bind()
