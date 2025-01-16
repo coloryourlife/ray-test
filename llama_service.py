@@ -51,15 +51,14 @@ class LlamaModel:
             raise
 
     async def __call__(self, request: Request):
-        try:
-            prompt = request.query_params["prompt"]
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            input_ids = self.tokenizer.encode(prompt, return_tensors="pt").to(device)
-            output = self.model.generate(input_ids, max_length=100)
-            return self.tokenizer.decode(output[0], skip_special_tokens=True)
-        except Exception as e:
-            logger.error(f"Error during inference: {str(e)}")
-            return {"error": str(e)}
+        # Check if the request is JSON or form data
+        prompt = await request.json()
+        logger.info(f"Received prompt: {prompt}")
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        input_ids = self.tokenizer.encode(prompt, return_tensors="pt").to(device)
+        output = self.model.generate(input_ids, max_length=100)
+        decoded_output = self.tokenizer.decode(output[0], skip_special_tokens=True)
+        return decoded_output
 
 
 app = LlamaModel.bind()
