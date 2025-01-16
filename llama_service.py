@@ -29,11 +29,13 @@ class LlamaModel:
 
             self.tokenizer = AutoTokenizer.from_pretrained(
                 "meta-llama/Llama-3.2-1B-Instruct",
+
                 use_auth_token=hf_token,
             )
             self.model = AutoModelForCausalLM.from_pretrained(
                 "meta-llama/Llama-3.2-1B-Instruct",
                 use_auth_token=hf_token,
+                rope_scaling={"type": "linear", "factor": 1.0}
             )
 
             if torch.cuda.is_available():
