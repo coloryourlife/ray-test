@@ -24,23 +24,23 @@ class LlamaModel:
         logger.info("Initializing LlamaModel")
         try:
             hf_token = os.environ.get("HF_TOKEN")
-            # if not hf_token:
-            #     raise ValueError("HF_TOKEN environment variable is not set")
-            #
-            # self.tokenizer = AutoTokenizer.from_pretrained(
-            #     "meta-llama/Llama-3.2-1B-Instruct",
-            #     use_auth_token=hf_token,
-            # )
-            # self.model = AutoModelForCausalLM.from_pretrained(
-            #     "meta-llama/Llama-3.2-1B-Instruct",
-            #     use_auth_token=hf_token,
-            # )
-            #
-            # if torch.cuda.is_available():
-            #     self.model.to("cuda")
-            #     logger.info("Model moved to CUDA")
-            # else:
-            #     logger.warning("CUDA is not available. Using CPU.")
+            if not hf_token:
+                raise ValueError("HF_TOKEN environment variable is not set")
+
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                "meta-llama/Llama-3.2-1B-Instruct",
+                use_auth_token=hf_token,
+            )
+            self.model = AutoModelForCausalLM.from_pretrained(
+                "meta-llama/Llama-3.2-1B-Instruct",
+                use_auth_token=hf_token,
+            )
+
+            if torch.cuda.is_available():
+                self.model.to("cuda")
+                logger.info("Model moved to CUDA")
+            else:
+                logger.warning("CUDA is not available. Using CPU.")
 
             logger.info("LlamaModel initialized successfully")
         except Exception as e:
@@ -51,8 +51,8 @@ class LlamaModel:
         try:
             prompt = request.query_params["prompt"]
             device = "cuda" if torch.cuda.is_available() else "cpu"
-            # input_ids = self.tokenizer.encode(prompt, return_tensors="pt").to(device)
-            # output = self.model.generate(input_ids, max_length=100)
+            input_ids = self.tokenizer.encode(prompt, return_tensors="pt").to(device)
+            output = self.model.generate(input_ids, max_length=100)
             return "Hello Wrold"
         except Exception as e:
             logger.error(f"Error during inference: {str(e)}")
