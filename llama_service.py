@@ -1,96 +1,114 @@
 import os
-import torch
 
 from typing import Dict, Optional, List
 import logging
-from pydantic import BaseModel
+
 from fastapi import FastAPI
 from starlette.requests import Request
 from starlette.responses import StreamingResponse, JSONResponse
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 
 from ray import serve
+
+from vllm.engine.arg_utils import AsyncEngineArgs
+from vllm.engine.async_llm_engine import AsyncLLMEngine
+from vllm.entrypoints.openai.cli_args import make_arg_parser
+from vllm.entrypoints.openai.protocol import (
+    ChatCompletionRequest,
+    ChatCompletionResponse,
+    ErrorResponse,
+)
+from vllm.entrypoints.openai.serving_chat import OpenAIServingChat
+from vllm.entrypoints.openai.serving_engine import LoRAModulePath
+from vllm.utils import FlexibleArgumentParser
 
 logger = logging.getLogger("ray.serve")
 
 app = FastAPI()
 
 
-class Prompt(BaseModel):
-    text: str
-    temperature: float = 0.2
-    max_new_tokens: int = 512
-    top_p: float = 0.7
-    top_k: int = 50
-    no_repeat_ngram_size: int = 4
-    repetition_penalty: float = 1
-    streaming: bool = False
-    do_sample: bool = False
-
-
-@serve.deployment(
-    num_replicas="auto",
-    ray_actor_options={"num_gpus": 1},
-    max_ongoing_requests=5,
-    autoscaling_config={
-        "min_replicas": 1,
-        "max_replicas": 5,
-        "target_num_ongoing_requests_per_replica": 2,
-    }
-)
+@serve.deployment(name="VLLMDeployment")
 @serve.ingress(app)
-class LlamaModel:
-    def __init__(self):
-        logger.info("Initializing LlamaModel")
-        try:
-            hf_token = os.environ.get("HF_TOKEN")
-            if not hf_token:
-                raise ValueError("HF_TOKEN environment variable is not set")
+class VLLMDeployment:
+    def __init__(
+        self,
+        engine_args: AsyncEngineArgs,
+        response_role: str,
+        lora_modules: Optional[List[LoRAModulePath]] = None,
+        chat_template: Optional[str] = None,
+    ):
+        logger.info(f"Starting with engine args: {engine_args}")
+        self.openai_serving_chat = None
+        self.engine_args = engine_args
+        self.response_role = response_role
+        self.lora_modules = lora_modules
+        self.chat_template = chat_template
+        self.engine = AsyncLLMEngine.from_engine_args(engine_args)
 
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                "meta-llama/Llama-3.2-1B-Instruct",
-                use_auth_token=hf_token,
-            )
-            self.model = AutoModelForCausalLM.from_pretrained(
-                "meta-llama/Llama-3.2-1B-Instruct",
-                torch_dtype=torch.float16,
-                load_in_8bit=False,
-                device_map="auto",
-                use_auth_token=hf_token,
-            )
-
-            self.pipe = pipeline("text-generation", model=self.model, tokenizer=self.tokenizer)
-
-            if torch.cuda.is_available():
-                self.model.to("cuda")
-                logger.info("Model moved to CUDA")
+    @app.post("/v1/chat/completions")
+    async def create_chat_completion(
+        self, request: ChatCompletionRequest, raw_request: Request
+    ):
+        """OpenAI-compatible HTTP endpoint
+        API reference:
+            - https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html
+        """
+        if not self.openai_serving_chat:
+            model_config = await self.engine.get_model_config()
+            if self.engine_args.saved_model_name is not None:
+                served_model_names = self.engine_args.served_model_name
             else:
-                logger.warning("CUDA is not available. Using CPU.")
-
-            logger.info("LlamaModel initialized successfully")
-        except Exception as e:
-            logger.error(f"Error initializing LlamaModel: {str(e)}")
-            raise
-
-    @app.post("/generate")
-    async def generate(self, prompt: Prompt):
-        try:
-            logger.info(f"Prompt Received")
-            output = self.pipe(
-                prompt,
-                return_full_text=False,
-                do_sample=True,
-                max_new_tokens=150,
-                temperature=0.2,
-                top_p=0.7,
-                top_k=50,
-                pad_token_id=self.tokenizer.pad_token_id,
-                early_stopping=False,
+                served_model_names = [self.engine_args.model]
+            self.openai_serving_chat = OpenAIServingChat(
+                self.engine,
+                model_config,
+                served_model_names=served_model_names,
+                response_role=self.response_role,
+                lora_modules=self.lora_modules,
+                chat_template=self.chat_template,
+                prompt_adapters=None,
+                request_logger=None,
             )
-            return output[0]["generated_text"]
-        except Exception as e:
-            logger.error(f"Error generating text: {str(e)}")
-            return str(e)
+        logger.info(f"Request: {request}")
+        generator = await self.openai_serving_chat.create_chat_completion(
+            request, raw_request
+        )
+        if isinstance(generator, ErrorResponse):
+            return JSONResponse(
+                content=generator.model_dump(), status_code=generator.code
+            )
+        if request.stream:
+            return StreamingResponse(content=generator, media_type="text/event-stream")
+        else:
+            assert isinstance(generator, ChatCompletionResponse)
+            return JSONResponse(content=generator.model_dump())
 
 
-app = LlamaModel.bind()
+def parse_vllm_args(cli_args: Dict[str, str]):
+    parser = FlexibleArgumentParser(description="vLLM CLI")
+    parser = make_arg_parser(parser)
+    arg_strings = []
+    for key, value in cli_args.items():
+        arg_strings.extend([f"--{key}", str(value)])
+    logger.info(arg_strings)
+    parsed_args = parser.parse_args(args=arg_strings)
+    return parsed_args
+
+
+def build_app(cli_args: Dict[str, str]) -> serve.Application:
+    parsed_args = parse_vllm_args(cli_args)
+    engine_args = AsyncEngineArgs.from_cli_args(parsed_args)
+    engine_args.worker_use_ray = True
+
+    return VLLMDeployment.bind(
+        engine_args,
+        parsed_args.response_role,
+        parsed_args.lora_modules,
+        parsed_args.chat_template,
+    )
+
+
+model = build_app({
+    "model": os.environ['MODEL_ID'],
+    "tensor-parallel-size": os.environ['TENSOR_PARALLELISM'],
+    "pipeline-parallel-size": os.environ['PIPELINE_PARALLELISM']
+})
