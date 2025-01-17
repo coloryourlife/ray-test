@@ -54,7 +54,7 @@ class VLLMDeployment:
         """
         if not self.openai_serving_chat:
             model_config = await self.engine.get_model_config()
-            if self.engine_args.saved_model_name is not None:
+            if self.engine_args.served_model_name is not None:
                 served_model_names = self.engine_args.served_model_name
             else:
                 served_model_names = [self.engine_args.model]
