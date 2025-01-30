@@ -107,7 +107,10 @@ def parse_vllm_args(cli_args: Dict[str, str]):
     parser = make_arg_parser(parser)
     arg_strings = []
     for key, value in cli_args.items():
-        arg_strings.extend([f"--{key}", str(value)])
+        if value == "":  # Handle flag arguments
+            arg_strings.append(f"--{key}")
+        else:
+            arg_strings.extend([f"--{key}", str(value)])
     logger.info(arg_strings)
     parsed_args = parser.parse_args(args=arg_strings)
     return parsed_args
@@ -129,7 +132,7 @@ def build_app(cli_args: Dict[str, str]) -> serve.Application:
 model = build_app({
     "model": "meta-llama/Llama-3.2-1B-Instruct",
     "max-lora-rank": "32",
-    "enable-lora": None,
+    "enable-lora": "",
     # "lora-modules": {
     #     "name": os.environ['DEPLOYMENT_ID'],  # lora_integer_id (globally unique)
     #     "path": os.environ['LORA_PATH'],
