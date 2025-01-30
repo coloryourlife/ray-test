@@ -44,11 +44,11 @@ class VLLMDeployment:
         self.model = model
         self.response_role = response_role
         self.chat_template = chat_template
-        self.engine = None
         self.model_config = None
         self.openai_serving_models = None
         self.openai_serving_chat = None
         self._is_initialized = False
+        self.engine = AsyncLLMEngine.from_engine_args(self.engine_args)
     
     async def _ensure_initialized(self):
         if not self._is_initialized:
@@ -57,7 +57,6 @@ class VLLMDeployment:
     async def initialize(self):
         if self._is_initialized:
             return
-        self.engine = AsyncLLMEngine.from_engine_args(self.engine_args)
         self.model_config = await self.engine.get_model_config()
         logger.info(f"Model configs: {self.model_config}")
 
