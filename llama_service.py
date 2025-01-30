@@ -42,6 +42,7 @@ class VLLMDeployment:
         logger.info(f"Starting with engine args: {engine_args}")
         self.engine_args = engine_args
         self.engine = AsyncLLMEngine.from_engine_args(engine_args)
+        logger.info(f"Model configs: {self.engine.get_model_config()}")
         self.openai_serving_models = OpenAIServingModels(
             engine_client=self.engine,
             model_config=self.engine.get_model_config(),
