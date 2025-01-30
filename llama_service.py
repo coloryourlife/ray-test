@@ -41,29 +41,65 @@ class VLLMDeployment:
     ):
         logger.info(f"Starting with engine args: {engine_args}")
         self.engine_args = engine_args
+        self.model = model
+        self.response_role = response_role
+        self.chat_template = chat_template
+        self.engine = None
+        self.model_config = None
+        self.openai_serving_models = None
+        self.openai_serving_chat = None
         self.engine = AsyncLLMEngine.from_engine_args(engine_args)
+        self.model_config = self.engine.get_model_config()
         logger.info(f"Model configs: {self.engine.get_model_config()}")
         self.openai_serving_models = OpenAIServingModels(
             engine_client=self.engine,
-            model_config=self.engine.get_model_config(),
+            model_config=self.model_config,
             base_model_paths=[BaseModelPath(name=model, model_path=model)],            # BaseModelPath(name=name, model_path=args.model)
             lora_modules=None,              # If we are loading lora module when initiate app
         )
         # await self.openai_serving_models.init_static_loras() if we are attatching lora upfront
         self.openai_serving_chat = OpenAIServingChat(
             engine_client=self.engine,
-            model_config=self.engine.get_model_config(),
+            model_config=self.model_config,
             models=self.openai_serving_models,
             response_role=response_role,
             chat_template=chat_template,
         )
-        self.response_role = response_role
-        self.chat_template = chat_template
+        self._is_initialized = False
+    
+    async def _ensure_initialized(self):
+        if not self._is_initialized:
+            await self.initialize()
+    
+    async def initialize(self):
+        if self._is_initialized:
+            return
+        self.engine = AsyncLLMEngine.from_engine_args(self.engine_args)
+        self.model_config = await self.engine.get_model_config()
+        logger.info(f"Model configs: {self.model_config}")
+
+        self.openai_serving_models = OpenAIServingModels(
+            engine_client=self.engine,
+            model_config=self.model_config,
+            base_model_paths=[BaseModelPath(name=self.model, model_path=self.model)],
+            lora_modules=None,
+        )
+        # await self.openai_serving_models.init_static_loras()
+        self.openai_serving_chat = OpenAIServingChat(
+            engine_client=self.engine,
+            model_config=self.model_config,
+            models=self.openai_serving_models,
+            response_role=self.response_role,
+            chat_template=self.chat_template,
+        )
+        self._is_initialized = True
 
     @app.post("/v1/load_lora_adapter")
     async def load_lora_adapter(self,
                                 request: LoadLoraAdapterRequest,
                                 raw_request: Request):
+        logger.info(f"Request: {request}")
+        await self._ensure_initialized()
         response = await self.openai_serving_models.load_lora_adapter(request)
         if isinstance(response, ErrorResponse):
             return JSONResponse(content=response.model_dump(),
@@ -75,7 +111,8 @@ class VLLMDeployment:
     async def unload_lora_adapter(self,
                                   request: UnloadLoraAdapterRequest,
                                   raw_request: Request):
-
+        logger.info(f"Request: {request}")
+        await self._ensure_initialized()
         response = await self.openai_serving_models.unload_lora_adapter(request)
         if isinstance(response, ErrorResponse):
             return JSONResponse(content=response.model_dump(),
@@ -88,6 +125,7 @@ class VLLMDeployment:
         self, request: ChatCompletionRequest, raw_request: Request
     ):
         logger.info(f"Request: {request}")
+        await self._ensure_initialized()
         generator = await self.openai_serving_chat.create_chat_completion(
             request, raw_request
         )
