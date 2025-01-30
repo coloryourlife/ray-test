@@ -42,17 +42,16 @@ class VLLMDeployment:
         logger.info(f"Starting with engine args: {engine_args}")
         self.engine_args = engine_args
         self.engine = AsyncLLMEngine.from_engine_args(engine_args)
-        self.model_config = self.engine.get_model_config()
         self.openai_serving_models = OpenAIServingModels(
             engine_client=self.engine,
-            model_config=self.model_config,
+            model_config=self.engine.get_model_config(),
             base_model_paths=[BaseModelPath(name=model, model_path=model)],            # BaseModelPath(name=name, model_path=args.model)
             lora_modules=None,              # If we are loading lora module when initiate app
         )
         # await self.openai_serving_models.init_static_loras() if we are attatching lora upfront
         self.openai_serving_chat = OpenAIServingChat(
             engine_client=self.engine,
-            model_config=self.model_config,
+            model_config=self.engine.get_model_config(),
             models=self.openai_serving_models,
             response_role=response_role,
             chat_template=chat_template,
