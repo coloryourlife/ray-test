@@ -122,17 +122,16 @@ def build_app(cli_args: Dict[str, str]) -> serve.Application:
     engine_args.worker_use_ray = True
 
     return VLLMDeployment.bind(
-        parsed_args.model,
-        engine_args,
-        parsed_args.response_role,
-        parsed_args.chat_template,
+        model=parsed_args.model,
+        engine_args=engine_args,
+        response_role=parsed_args.response_role,
+        chat_template=parsed_args.chat_template,
     )
 
 
 model = build_app({
     "model": "meta-llama/Llama-3.2-1B-Instruct",
     "max-lora-rank": "32",
-    "enable-lora": "",
     # "lora-modules": {
     #     "name": os.environ['DEPLOYMENT_ID'],  # lora_integer_id (globally unique)
     #     "path": os.environ['LORA_PATH'],
