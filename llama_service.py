@@ -138,7 +138,6 @@ model = build_app({
     #     "path": os.environ['LORA_PATH'],
     #     "base_model_name": "meta-llama/Llama-3.2-1B-Instruct",
     # },
-    "max_model_len": "140000",
     "tensor-parallel-size": os.environ['TENSOR_PARALLELISM'],
     "pipeline-parallel-size": os.environ['PIPELINE_PARALLELISM']
 })
