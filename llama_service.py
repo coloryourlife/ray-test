@@ -129,7 +129,7 @@ def build_app(cli_args: Dict[str, str]) -> serve.Application:
 model = build_app({
     "model": "meta-llama/Llama-3.2-1B-Instruct",
     "max-lora-rank": "32",
-    "enable-lora": "true",
+    "enable-lora": "",
     # "lora-modules": {
     #     "name": os.environ['DEPLOYMENT_ID'],  # lora_integer_id (globally unique)
     #     "path": os.environ['LORA_PATH'],
