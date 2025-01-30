@@ -32,7 +32,7 @@ app = FastAPI()
 @serve.deployment(name="VLLMDeployment")
 @serve.ingress(app)
 class VLLMDeployment:
-    async def __ainit__(
+    def __init__(
         self,
         model: str,
         engine_args: AsyncEngineArgs,
@@ -49,7 +49,7 @@ class VLLMDeployment:
             base_model_paths=[BaseModelPath(name=model, model_path=model)],            # BaseModelPath(name=name, model_path=args.model)
             lora_modules=None,              # If we are loading lora module when initiate app
         )
-        await self.openai_serving_models.init_static_loras()
+        # await self.openai_serving_models.init_static_loras() if we are attatching lora upfront
         self.openai_serving_chat = OpenAIServingChat(
             engine_client=self.engine,
             model_config=self.model_config,
@@ -132,6 +132,7 @@ def build_app(cli_args: Dict[str, str]) -> serve.Application:
 model = build_app({
     "model": "meta-llama/Llama-3.2-1B-Instruct",
     "max-lora-rank": "32",
+    "enable-lora": "",
     # "lora-modules": {
     #     "name": os.environ['DEPLOYMENT_ID'],  # lora_integer_id (globally unique)
     #     "path": os.environ['LORA_PATH'],
