@@ -1,12 +1,7 @@
 import os
 
-from typing import Dict, Optional, List
+from typing import Dict, Optional
 import logging
-
-from dataclasses import dataclass
-
-from argparse import Namespace
-from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.responses import Response
@@ -26,7 +21,6 @@ from vllm.entrypoints.openai.protocol import (
 from vllm.entrypoints.openai.serving_models import (BaseModelPath,
                                                     OpenAIServingModels)
 from vllm.entrypoints.openai.serving_chat import OpenAIServingChat
-from vllm.entrypoints.openai.serving_engine import LoRAModulePath
 from vllm.entrypoints.openai.protocol import LoadLoraAdapterRequest, UnloadLoraAdapterRequest
 from vllm.utils import FlexibleArgumentParser
 
