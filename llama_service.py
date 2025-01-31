@@ -54,10 +54,10 @@ class S3LoadLoraAdapterRequest(LoadLoraAdapterRequest):
             raise ValueError(f"LoRA not found at {self.lora_path} and no S3 config provided")
 
         # Create the directory path if it doesn't exist
-        os.makedirs(os.path.dirname(local_lora_path), exist_ok=True)
+        os.makedirs(local_lora_path, exist_ok=True)
 
         # Download from S3 directly to the specified path e.g. tmp/lora_path/artifacts.zip
-        temp_zip_path = os.path.join(os.path.dirname(local_lora_path), "artifacts.zip")
+        temp_zip_path = os.path.join(local_lora_path, "artifacts.zip")
         try:
             logger.info("Downloading Lora Modules from S3")
             s3_client = boto3.client('s3', region_name=self.region)
@@ -78,10 +78,10 @@ class S3LoadLoraAdapterRequest(LoadLoraAdapterRequest):
                 contents = zip_ref.namelist()
                 logger.info(f"Zip Contents: {contents}")
                 # DEBUGGING END
-                zip_ref.extractall(os.path.dirname(local_lora_path))
-                logger.info(f"Extracted to {os.path.dirname(local_lora_path)}")
+                zip_ref.extractall(local_lora_path)
+                logger.info(f"Extracted to {local_lora_path}")
 
-            extracted_files = os.listdir(os.path.dirname(local_lora_path))
+            extracted_files = os.listdir(local_lora_path)
             logger.info(f"Extracted Files: {extracted_files}")
 
             self._verify_unzip(local_lora_path)
