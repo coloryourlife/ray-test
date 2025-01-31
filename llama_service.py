@@ -41,18 +41,18 @@ class S3LoadLoraAdapterRequest(LoadLoraAdapterRequest):
     region: str = Field(default="us-east-1")
 
     async def ensure_local_lora(self) -> "LoadLoraAdapterRequest":
-        if os.path.exists(f"/tmp/{self.lora_path}"):
+        local_lora_path = os.path.abspath(os.path.join("/tmp", self.lora_path))
+        if os.path.exists(local_lora_path):
             logger.info(f"{self.lora_name} exists")
             return LoadLoraAdapterRequest(
                 lora_name=self.lora_name,
-                lora_path=f"/tmp/{self.lora_path}",
+                lora_path=local_lora_path
             )
         if not self.key:
             logger.error(f"LoRA not found at {self.lora_path} and no S3 config provided")
             raise ValueError(f"LoRA not found at {self.lora_path} and no S3 config provided")
 
         # Create the directory path if it doesn't exist
-        local_lora_path = os.path.join("/tmp", self.lora_path)
         os.makedirs(os.path.dirname(local_lora_path), exist_ok=True)
 
         # Download from S3 directly to the specified path
