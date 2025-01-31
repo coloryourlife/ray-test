@@ -10,7 +10,7 @@ from fastapi.responses import Response
 from starlette.requests import Request
 from starlette.responses import StreamingResponse, JSONResponse
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from ray import serve
 
@@ -29,7 +29,7 @@ from vllm.entrypoints.openai.protocol import LoadLoraAdapterRequest, UnloadLoraA
 from vllm.utils import FlexibleArgumentParser
 
 logger = logging.getLogger("ray.serve")
-AWS_ACCESS_KEY = os.environ.get('AWS_ACCESS_KEY', '')
+AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID', '')
 AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY', '')
 
 app = FastAPI()
