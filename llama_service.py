@@ -42,6 +42,7 @@ class S3LoadLoraAdapterRequest(LoadLoraAdapterRequest):
 
     async def ensure_local_lora(self) -> "LoadLoraAdapterRequest":
         local_lora_path = os.path.abspath(os.path.join("/tmp", self.lora_path))
+        logger.info(f"Local lora path: {local_lora_path}")
         if os.path.exists(local_lora_path):
             logger.info(f"{self.lora_name} exists")
             return LoadLoraAdapterRequest(
@@ -55,7 +56,7 @@ class S3LoadLoraAdapterRequest(LoadLoraAdapterRequest):
         # Create the directory path if it doesn't exist
         os.makedirs(os.path.dirname(local_lora_path), exist_ok=True)
 
-        # Download from S3 directly to the specified path
+        # Download from S3 directly to the specified path e.g. tmp/lora_path/artifacts.zip
         temp_zip_path = os.path.join(os.path.dirname(local_lora_path), "artifacts.zip")
         try:
             logger.info("Downloading Lora Modules from S3")
@@ -65,6 +66,10 @@ class S3LoadLoraAdapterRequest(LoadLoraAdapterRequest):
                 self.key,
                 temp_zip_path,
             )
+
+            if not os.path.exists(temp_zip_path):
+                logger.error(f"Failed to download {self.key} from S3")
+                raise ValueError(f"Failed to download {self.key} from S3")
 
             # Unzip the contents
             logger.info("Unzip artifacts")
