@@ -1,4 +1,6 @@
 import os
+import boto3
+import zipfile
 
 from typing import Dict, Optional
 import logging
@@ -7,6 +9,8 @@ from fastapi import FastAPI
 from fastapi.responses import Response
 from starlette.requests import Request
 from starlette.responses import StreamingResponse, JSONResponse
+
+from pydantic import BaseModel, Field
 
 from ray import serve
 
@@ -25,9 +29,61 @@ from vllm.entrypoints.openai.protocol import LoadLoraAdapterRequest, UnloadLoraA
 from vllm.utils import FlexibleArgumentParser
 
 logger = logging.getLogger("ray.serve")
+AWS_ACCESS_KEY = os.environ.get('AWS_ACCESS_KEY', '')
+AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY', '')
 
 app = FastAPI()
 
+
+class S3Config(BaseModel):
+    bucket: str
+    key: str
+    region: str = Field(default="us-east-1")
+
+
+class S3LoadLoraAdapterRequest(LoadLoraAdapterRequest):
+    s3_config: S3Config | None = None
+
+    async def ensure_local_lora(self) -> "LoadLoraAdapterRequest":
+        if os.path.exists(self.lora_path):
+            return LoadLoraAdapterRequest(
+                lora_name=self.lora_name,
+                lora_path=self.lora_path,
+            )
+        if not self.s3_config:
+            raise ValueError(f"LoRA not found at {self.lora_path} and no S3 config provided")
+
+        # Create the directory path if it doesn't exist
+        os.makedirs(os.path.dirname(self.lora_path), exist_ok=True)
+
+        # Download from S3 directly to the specified path
+        temp_zip_path = os.path.join(os.path.dirname(self.lora_path), "artifacts.zip")
+        try:
+            s3_client = boto3.client('s3', region_name=self.s3_config.region)
+            s3_client.download_file(
+                self.s3_config.bucket,
+                self.s3_config.key,
+                temp_zip_path,
+            )
+
+            # Unzip the contents
+            with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
+                zip_ref.extractall(os.path.dirname(self.lora_path))
+            
+            # Remove temporary zip file
+            os.remove(temp_zip_path)
+
+        except Exception as e:
+            # Clean up the zip file if it exists
+            if os.path.exists(temp_zip_path):
+                os.remove(temp_zip_path)
+            raise ValueError(f"Failed to download LoRA from S3: {str(e)}")
+        
+        return LoadLoraAdapterRequest(
+            lora_name=self.lora_name,
+            lora_path=self.lora_path,
+        )
+        
 
 @serve.deployment(name="VLLMDeployment")
 @serve.ingress(app)
@@ -80,16 +136,25 @@ class VLLMDeployment:
 
     @app.post("/v1/load_lora_adapter")
     async def load_lora_adapter(self,
-                                request: LoadLoraAdapterRequest,
+                                request: S3LoadLoraAdapterRequest,
                                 raw_request: Request):
         logger.info(f"Request: {request}")
         await self._ensure_initialized()
-        response = await self.openai_serving_models.load_lora_adapter(request)
-        if isinstance(response, ErrorResponse):
-            return JSONResponse(content=response.model_dump(),
-                                status_code=response.code)
+        try:
+            lora_request = await request.ensure_local_lora()
+            # if lora_path not exist -> load_lora from S3
+            # need to update the request -> need a path to S3
+            response = await self.openai_serving_models.load_lora_adapter(lora_request)
+            if isinstance(response, ErrorResponse):
+                return JSONResponse(content=response.model_dump(),
+                                    status_code=response.code)
 
-        return Response(status_code=200, content=response)
+            return Response(status_code=200, content=response)
+        except ValueError as e:
+            return JSONResponse(
+                content={"error": str(e)},
+                status_code=400,
+            )
 
     @app.post("/v1/unload_lora_adapter")
     async def unload_lora_adapter(self,
