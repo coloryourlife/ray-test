@@ -86,7 +86,7 @@ class S3LoadLoraAdapterRequest(LoadLoraAdapterRequest):
             extracted_files = os.listdir(local_lora_path)
             logger.info(f"Extracted Files: {extracted_files}")
 
-            self._verify_unzip(local_lora_path)
+            self._verify_unzip_and_update_model_file(local_lora_path)
             
             # Remove temporary zip file
             logger.info(f"Remove {temp_zip_path} from the local.")
