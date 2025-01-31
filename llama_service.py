@@ -35,22 +35,20 @@ AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY', '')
 app = FastAPI()
 
 
-class S3Config(BaseModel):
+class S3LoadLoraAdapterRequest(LoadLoraAdapterRequest):
     bucket: str
     key: str
     region: str = Field(default="us-east-1")
 
-
-class S3LoadLoraAdapterRequest(LoadLoraAdapterRequest):
-    s3_config: S3Config | None = None
-
     async def ensure_local_lora(self) -> "LoadLoraAdapterRequest":
         if os.path.exists(self.lora_path):
+            logger.info(f"{self.lora_name} exists")
             return LoadLoraAdapterRequest(
                 lora_name=self.lora_name,
                 lora_path=self.lora_path,
             )
-        if not self.s3_config:
+        if not self.key:
+            logger.error(f"LoRA not found at {self.lora_path} and no S3 config provided")
             raise ValueError(f"LoRA not found at {self.lora_path} and no S3 config provided")
 
         # Create the directory path if it doesn't exist
@@ -59,18 +57,21 @@ class S3LoadLoraAdapterRequest(LoadLoraAdapterRequest):
         # Download from S3 directly to the specified path
         temp_zip_path = os.path.join(os.path.dirname(self.lora_path), "artifacts.zip")
         try:
-            s3_client = boto3.client('s3', region_name=self.s3_config.region)
+            logger.info("Downloading Lora Modules from S3")
+            s3_client = boto3.client('s3', region_name=self.region)
             s3_client.download_file(
-                self.s3_config.bucket,
-                self.s3_config.key,
+                self.bucket,
+                self.key,
                 temp_zip_path,
             )
 
             # Unzip the contents
+            logger.info("Unzip artifacts")
             with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
                 zip_ref.extractall(os.path.dirname(self.lora_path))
             
             # Remove temporary zip file
+            logger.info(f"Remove {temp_zip_path} from the local.")
             os.remove(temp_zip_path)
 
         except Exception as e:
