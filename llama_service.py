@@ -75,6 +75,7 @@ class S3LoadLoraAdapterRequest(LoadLoraAdapterRequest):
             logger.info("Unzip artifacts")
             with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
                 zip_ref.extractall(os.path.dirname(local_lora_path))
+            self._verify_unzip(local_lora_path)
             
             # Remove temporary zip file
             logger.info(f"Remove {temp_zip_path} from the local.")
@@ -90,6 +91,14 @@ class S3LoadLoraAdapterRequest(LoadLoraAdapterRequest):
             lora_name=self.lora_name,
             lora_path=local_lora_path,
         )
+
+    @staticmethod
+    def _verify_unzip(local_lora_dir):
+        lora_tensor_path = os.path.join(local_lora_dir, "adapter_model.safetensors")
+        if not os.path.exists(lora_tensor_path):
+            logger.error(f"There would be problem while unzipping")
+            raise ValueError(f"There would be problem while unzipping")
+        return
         
 
 @serve.deployment(name="VLLMDeployment")
