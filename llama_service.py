@@ -28,6 +28,8 @@ from vllm.entrypoints.openai.serving_chat import OpenAIServingChat
 from vllm.entrypoints.openai.protocol import LoadLoraAdapterRequest, UnloadLoraAdapterRequest
 from vllm.utils import FlexibleArgumentParser
 
+from safetensors.torch import load_file, save_file
+
 logger = logging.getLogger("ray.serve")
 AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID', '')
 AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY', '')
@@ -101,14 +103,28 @@ class S3LoadLoraAdapterRequest(LoadLoraAdapterRequest):
             lora_path=local_lora_path,
         )
 
+    # TODO: Only verify unzip
     @staticmethod
-    def _verify_unzip(local_lora_dir):
+    def _verify_unzip_and_update_model_file(local_lora_dir):
         lora_tensor_path = os.path.join(local_lora_dir, "adapter_model.safetensors")
         logger.info(f"Checking for adapter file at: {lora_tensor_path}")
         if not os.path.exists(lora_tensor_path):
             logger.error(f"There would be problem while unzipping")
             logger.error(f"Directory contents: {os.listdir(local_lora_dir) if os.path.exists(local_lora_dir) else 'directory does not exist'}")
             raise ValueError(f"There would be problem while unzipping")
+        model_state_dict = load_file(lora_tensor_path)
+        try:
+            keys = model_state_dict.keys()
+            keys_to_remove = [key for key in keys if 'model.embed_tokens.weight' in key or "lm_head" in key]
+
+            # Remove the keys
+            for extra_key in keys_to_remove:
+                del model_state_dict[extra_key]
+
+            # Save the updated model if any keys were removed
+            save_file(model_state_dict, lora_tensor_path)
+        except Exception as e:
+            raise ValueError("Error during model update for deleting lm.head from lora")
         return
         
 
