@@ -74,7 +74,16 @@ class S3LoadLoraAdapterRequest(LoadLoraAdapterRequest):
             # Unzip the contents
             logger.info("Unzip artifacts")
             with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
+                # DEBUGGING
+                contents = zip_ref.namelist()
+                logger.info(f"Zip Contents: {contents}")
+                # DEBUGGING END
                 zip_ref.extractall(os.path.dirname(local_lora_path))
+                logger.info(f"Extracted to {os.path.dirname(local_lora_path)}")
+
+            extracted_files = os.listdir(os.path.dirname(local_lora_path))
+            logger.info(f"Extracted Files: {extracted_files}")
+
             self._verify_unzip(local_lora_path)
             
             # Remove temporary zip file
@@ -95,8 +104,10 @@ class S3LoadLoraAdapterRequest(LoadLoraAdapterRequest):
     @staticmethod
     def _verify_unzip(local_lora_dir):
         lora_tensor_path = os.path.join(local_lora_dir, "adapter_model.safetensors")
+        logger.info(f"Checking for adapter file at: {lora_tensor_path}")
         if not os.path.exists(lora_tensor_path):
             logger.error(f"There would be problem while unzipping")
+            logger.error(f"Directory contents: {os.listdir(local_lora_dir) if os.path.exists(local_lora_dir) else 'directory does not exist'}")
             raise ValueError(f"There would be problem while unzipping")
         return
         
