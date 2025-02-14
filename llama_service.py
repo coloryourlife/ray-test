@@ -237,7 +237,7 @@ def parse_vllm_args(cli_args: Dict[str, str]):
     parser = make_arg_parser(parser)
     arg_strings = []
     for key, value in cli_args.items():
-        if value == "":  # Handle flag arguments
+        if value == "":  # Handle flag arguments (e.g. --lora-enable)
             arg_strings.append(f"--{key}")
         else:
             arg_strings.extend([f"--{key}", str(value)])
@@ -263,11 +263,6 @@ model = build_app({
     "model": "meta-llama/Llama-3.2-1B-Instruct",
     "max-lora-rank": "32",
     "enable-lora": "",
-    # "lora-modules": {
-    #     "name": os.environ['DEPLOYMENT_ID'],  # lora_integer_id (globally unique)
-    #     "path": os.environ['LORA_PATH'],
-    #     "base_model_name": "meta-llama/Llama-3.2-1B-Instruct",
-    # },
     "tensor-parallel-size": os.environ['TENSOR_PARALLELISM'],
     "pipeline-parallel-size": os.environ['PIPELINE_PARALLELISM']
 })
