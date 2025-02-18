@@ -25,7 +25,10 @@ from vllm.entrypoints.openai.protocol import (
 from vllm.entrypoints.openai.serving_models import (BaseModelPath,
                                                     OpenAIServingModels)
 from vllm.entrypoints.openai.serving_chat import OpenAIServingChat
-from vllm.entrypoints.openai.protocol import LoadLoraAdapterRequest, UnloadLoraAdapterRequest
+from vllm.entrypoints.openai.serving_pooling import OpenAIServingPooling
+from vllm.entrypoints.openai.protocol import (LoadLoraAdapterRequest,
+                                              UnloadLoraAdapterRequest,
+                                              PoolingRequest, PoolingResponse)
 from vllm.utils import FlexibleArgumentParser
 
 from safetensors.torch import load_file, save_file
@@ -146,6 +149,7 @@ class VLLMDeployment:
         self.model_config = None
         self.openai_serving_models = None
         self.openai_serving_chat = None
+        self.openai_serving_pooling = None
         self._is_initialized = False
         self.engine = AsyncLLMEngine.from_engine_args(self.engine_args)
     
@@ -174,6 +178,12 @@ class VLLMDeployment:
             request_logger=None,
             chat_template=self.chat_template,
             chat_template_content_format="auto"
+        )
+
+        self.openai_serving_pooling = OpenAIServingPooling(
+            engine_client=self.engine,
+            model_config=self.model_config,
+            models=self.openai_serving_models,
         )
         self._is_initialized = True
 
@@ -229,6 +239,19 @@ class VLLMDeployment:
             return StreamingResponse(content=generator, media_type="text/event-stream")
         else:
             assert isinstance(generator, ChatCompletionResponse)
+            return JSONResponse(content=generator.model_dump())
+
+    @app.post("/v1/pooling")
+    async def create_pooling(self,
+                             request: PoolingRequest, raw_request:Request):
+        await self._ensure_initialized()
+        generator = await self.openai_serving_pooling.create_pooling(request, raw_request)
+        if isinstance(generator, ErrorResponse):
+            return JSONResponse(
+                content=generator.model_dump(),
+                status_code=generator.code,
+            )
+        elif isinstance(generator, PoolingResponse):
             return JSONResponse(content=generator.model_dump())
 
 
