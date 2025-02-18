@@ -170,15 +170,15 @@ class VLLMDeployment:
             lora_modules=None,
         )
         # await self.openai_serving_models.init_static_loras()
-        self.openai_serving_chat = OpenAIServingChat(
-            engine_client=self.engine,
-            model_config=self.model_config,
-            models=self.openai_serving_models,
-            response_role="assistant",
-            request_logger=None,
-            chat_template=self.chat_template,
-            chat_template_content_format="auto"
-        )
+        # self.openai_serving_chat = OpenAIServingChat(
+        #     engine_client=self.engine,
+        #     model_config=self.model_config,
+        #     models=self.openai_serving_models,
+        #     response_role="assistant",
+        #     request_logger=None,
+        #     chat_template=self.chat_template,
+        #     chat_template_content_format="auto"
+        # )
 
         self.openai_serving_pooling = OpenAIServingPooling(
             engine_client=self.engine,
@@ -225,24 +225,24 @@ class VLLMDeployment:
 
         return Response(status_code=200, content=response)
 
-    @app.post("/v1/chat/completions")
-    async def create_chat_completion(
-        self, request: ChatCompletionRequest, raw_request: Request
-    ):
-        logger.info(f"Request: {request}")
-        await self._ensure_initialized()
-        generator = await self.openai_serving_chat.create_chat_completion(
-            request, raw_request
-        )
-        if isinstance(generator, ErrorResponse):
-            return JSONResponse(
-                content=generator.model_dump(), status_code=generator.code
-            )
-        if request.stream:
-            return StreamingResponse(content=generator, media_type="text/event-stream")
-        else:
-            assert isinstance(generator, ChatCompletionResponse)
-            return JSONResponse(content=generator.model_dump())
+    # @app.post("/v1/chat/completions")
+    # async def create_chat_completion(
+    #     self, request: ChatCompletionRequest, raw_request: Request
+    # ):
+    #     logger.info(f"Request: {request}")
+    #     await self._ensure_initialized()
+    #     generator = await self.openai_serving_chat.create_chat_completion(
+    #         request, raw_request
+    #     )
+    #     if isinstance(generator, ErrorResponse):
+    #         return JSONResponse(
+    #             content=generator.model_dump(), status_code=generator.code
+    #         )
+    #     if request.stream:
+    #         return StreamingResponse(content=generator, media_type="text/event-stream")
+    #     else:
+    #         assert isinstance(generator, ChatCompletionResponse)
+    #         return JSONResponse(content=generator.model_dump())
 
     @app.post("/v1/pooling")
     async def create_pooling(self,
@@ -288,6 +288,7 @@ def build_app(cli_args: Dict[str, str]) -> serve.Application:
 model = build_app({
     "model": "meta-llama/Llama-3.2-1B-Instruct",
     "max-lora-rank": "32",
+    "task": "classify",
     "enable-lora": "",
     "tensor-parallel-size": os.environ['TENSOR_PARALLELISM'],
     "pipeline-parallel-size": os.environ['PIPELINE_PARALLELISM']
