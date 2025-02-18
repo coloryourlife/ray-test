@@ -258,7 +258,9 @@ class VLLMDeployment:
                     status_code=generator.code,
                 )
             elif isinstance(generator, PoolingResponse):
-                sanitized_data = self.sanitize_float_values(generator.model_dump())
+                res = generator.model_dump()
+                logger.info(f"Response: {res}")
+                sanitized_data = self.sanitize_float_values(res)
                 return JSONResponse(content=sanitized_data)
 
             assert_never(generator)
@@ -270,7 +272,6 @@ class VLLMDeployment:
             )
 
     def sanitize_float_values(self, data):
-        logger.info(f"Data: {data}")
         if isinstance(data, dict):
             return {k: self.sanitize_float_values(v) for k, v in data.items()}
         elif isinstance(data, list):
