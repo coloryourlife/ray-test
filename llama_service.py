@@ -1,6 +1,7 @@
 import os
 import boto3
 import zipfile
+import math
 
 from typing import Dict, Optional
 from typing_extensions import assert_never
@@ -249,16 +250,36 @@ class VLLMDeployment:
     async def create_pooling(self,
                              request: PoolingRequest, raw_request: Request):
         await self._ensure_initialized()
-        generator = await self.openai_serving_pooling.create_pooling(request, raw_request)
-        if isinstance(generator, ErrorResponse):
-            return JSONResponse(
-                content=generator.model_dump(),
-                status_code=generator.code,
-            )
-        elif isinstance(generator, PoolingResponse):
-            return JSONResponse(content=generator.model_dump())
+        try:
+            generator = await self.openai_serving_pooling.create_pooling(request, raw_request)
+            if isinstance(generator, ErrorResponse):
+                return JSONResponse(
+                    content=generator.model_dump(),
+                    status_code=generator.code,
+                )
+            elif isinstance(generator, PoolingResponse):
+                sanitized_data = self.sanitize_float_values(generator.model_dump())
+                return JSONResponse(content=sanitized_data)
 
-        assert_never(generator)
+            assert_never(generator)
+        except Exception as e:
+            logger.error(f"Error in create_pooling: {str(e)}")
+            return JSONResponse(
+                content={"error": "An unexpected error occurred during pooling."},
+                status_code=500
+            )
+
+    def sanitize_float_values(self, data):
+        if isinstance(data, dict):
+            return {k: self.sanitize_float_values(v) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [self.sanitize_float_values(v) for v in data]
+        elif isinstance(data, float):
+            if math.isnan(data) or math.isinf(data):
+                return None
+            return data
+        else:
+            return data
 
 
 def parse_vllm_args(cli_args: Dict[str, str]):
