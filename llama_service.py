@@ -3,6 +3,7 @@ import boto3
 import zipfile
 
 from typing import Dict, Optional
+from typing_extensions import assert_never
 import logging
 
 from fastapi import FastAPI
@@ -246,7 +247,7 @@ class VLLMDeployment:
 
     @app.post("/v1/pooling")
     async def create_pooling(self,
-                             request: PoolingRequest, raw_request:Request):
+                             request: PoolingRequest, raw_request: Request):
         await self._ensure_initialized()
         generator = await self.openai_serving_pooling.create_pooling(request, raw_request)
         if isinstance(generator, ErrorResponse):
@@ -256,6 +257,8 @@ class VLLMDeployment:
             )
         elif isinstance(generator, PoolingResponse):
             return JSONResponse(content=generator.model_dump())
+
+        assert_never(generator)
 
 
 def parse_vllm_args(cli_args: Dict[str, str]):
