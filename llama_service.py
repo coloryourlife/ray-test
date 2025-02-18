@@ -184,6 +184,9 @@ class VLLMDeployment:
             engine_client=self.engine,
             model_config=self.model_config,
             models=self.openai_serving_models,
+            request_logger=None,
+            chat_template=self.chat_template,
+            chat_template_content_format="auto"
         )
         self._is_initialized = True
 
