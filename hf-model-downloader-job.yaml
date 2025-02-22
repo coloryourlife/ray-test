@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hf-model-downloader
+spec:
+  template:
+    spec:
+      containers:
+      - name: hf-downloader
+        image: python:3.9-slim
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            pip install --no-cache-dir --upgrade pip
+            pip install --no-cache-dir huggingface_hub[hf_transfer]
+            python -c "
+            from huggingface_hub import snapshot_download
+            import os
+            HF_HUB_ENABLE_HF_TRANSFER=1
+            token = os.environ['HF_TOKEN']
+            print('Downloading base model')
+            snapshot_download(repo_id='meta-llama/Llama-3.2-1B-Instruct', local_dir='/models', token=token)
+            print('Download finished')
+            "
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: hf_api_token
+        volumeMounts:
+        - name: model-storage
+          mountPath: /models
+      restartPolicy: Never
+      volumes:
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: base-model-pvc
