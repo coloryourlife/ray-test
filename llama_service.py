@@ -312,14 +312,13 @@ def build_app(cli_args: Dict[str, str]) -> serve.Application:
 
 
 model = build_app({
-    "model": "meta-llama/Llama-3.2-1B-Instruct",
-    "download-dir": "$HOME/models/Llama-3.2-1B-Instruct",
+    "model": "/models/Llama-3.2-1B-Instruct",
     "max-lora-rank": "32",
-    # "task": "classify",
     "enable-lora": "",
     "tensor-parallel-size": os.environ['TENSOR_PARALLELISM'],
     "pipeline-parallel-size": os.environ['PIPELINE_PARALLELISM'],
-    # "load-format": "pt"   # auto, pt, safetensors, npcache, dummy, etc
+    "load-format": "safetensors",   # auto, pt, safetensors, npcache, dummy, etc
+    # "task": "classify",
 })
 
 # vllm serve meta-llama/Llama-3.2-1B-Instruct --enable-lora --lora-modules '{"name": "tr-CQjJeCUnYtuTT8g3yp6zu2-3",
