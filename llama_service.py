@@ -312,7 +312,7 @@ def build_app(cli_args: Dict[str, str]) -> serve.Application:
 
 
 model = build_app({
-    "model": "emissary/Llama-3.2-1B-Instruct",
+    "model": "meta-llama/Llama-3.2-1B-Instruct",
     "download-dir": "$HOME/models/Llama-3.2-1B-Instruct",
     "max-lora-rank": "32",
     "task": "classify",
