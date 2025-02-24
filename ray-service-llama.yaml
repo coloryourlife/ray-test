@@ -49,6 +49,9 @@ spec:
           containers:
           - name: ray-head
             image: rayproject/ray-ml:latest
+            volumeMounts:
+              - name: model-storage
+                mountPath: /models
             env:
             - name: HF_TOKEN
               valueFrom:
@@ -85,24 +88,24 @@ spec:
               name: client
             - containerPort: 8000
               name: serve
+          volumes:
+            - name: model-storage
+              persistentVolumeClaim:
+                claimName: base-model-pvc
     workerGroupSpecs:
     - groupName: gpu-worker-group
       replicas: 1
       minReplicas: 0
       maxReplicas: 5
       rayStartParams: {}
-      volumes:
-        - name: model-storage
-          persistentVolumeClaim:
-            claimName: base-model-pvc
-      volumeMounts:
-        - name: model-storage
-          mountPath: /models
       template:
         spec:
           containers:
             - name: ray-worker
               image: rayproject/ray-ml:latest
+              volumeMounts:
+                - name: model-storage
+                  mountPath: /models
               env:
                 - name: HF_TOKEN
                   valueFrom:
@@ -130,6 +133,10 @@ spec:
                   cpu: "3"
                   memory: "14Gi"
                   nvidia.com/gpu: "1"
+          volumes:
+            - name: model-storage
+              persistentVolumeClaim:
+                claimName: base-model-pvc
           restartPolicy: Never
           tolerations:
             - key: "nvidia.com/gpu"
