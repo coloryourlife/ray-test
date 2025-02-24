@@ -172,24 +172,24 @@ class VLLMDeployment:
             lora_modules=None,
         )
         # await self.openai_serving_models.init_static_loras()
-        # self.openai_serving_chat = OpenAIServingChat(
-        #     engine_client=self.engine,
-        #     model_config=self.model_config,
-        #     models=self.openai_serving_models,
-        #     response_role="assistant",
-        #     request_logger=None,
-        #     chat_template=self.chat_template,
-        #     chat_template_content_format="auto"
-        # )
-
-        self.openai_serving_pooling = OpenAIServingPooling(
+        self.openai_serving_chat = OpenAIServingChat(
             engine_client=self.engine,
             model_config=self.model_config,
             models=self.openai_serving_models,
+            response_role="assistant",
             request_logger=None,
             chat_template=self.chat_template,
             chat_template_content_format="auto"
         )
+
+        # self.openai_serving_pooling = OpenAIServingPooling(
+        #     engine_client=self.engine,
+        #     model_config=self.model_config,
+        #     models=self.openai_serving_models,
+        #     request_logger=None,
+        #     chat_template=self.chat_template,
+        #     chat_template_content_format="auto"
+        # )
         self._is_initialized = True
 
     @app.post("/v1/load_lora_adapter")
@@ -227,61 +227,61 @@ class VLLMDeployment:
 
         return Response(status_code=200, content=response)
 
-    # @app.post("/v1/chat/completions")
-    # async def create_chat_completion(
-    #     self, request: ChatCompletionRequest, raw_request: Request
-    # ):
-    #     logger.info(f"Request: {request}")
-    #     await self._ensure_initialized()
-    #     generator = await self.openai_serving_chat.create_chat_completion(
-    #         request, raw_request
-    #     )
-    #     if isinstance(generator, ErrorResponse):
-    #         return JSONResponse(
-    #             content=generator.model_dump(), status_code=generator.code
-    #         )
-    #     if request.stream:
-    #         return StreamingResponse(content=generator, media_type="text/event-stream")
-    #     else:
-    #         assert isinstance(generator, ChatCompletionResponse)
-    #         return JSONResponse(content=generator.model_dump())
-
-    @app.post("/v1/pooling")
-    async def create_pooling(self,
-                             request: PoolingRequest, raw_request: Request):
+    @app.post("/v1/chat/completions")
+    async def create_chat_completion(
+        self, request: ChatCompletionRequest, raw_request: Request
+    ):
+        logger.info(f"Request: {request}")
         await self._ensure_initialized()
-        try:
-            generator = await self.openai_serving_pooling.create_pooling(request, raw_request)
-            if isinstance(generator, ErrorResponse):
-                return JSONResponse(
-                    content=generator.model_dump(),
-                    status_code=generator.code,
-                )
-            elif isinstance(generator, PoolingResponse):
-                res = generator.model_dump()
-                logger.info(f"Response: {res}")
-                sanitized_data = self.sanitize_float_values(res)
-                return JSONResponse(content=sanitized_data)
-
-            assert_never(generator)
-        except Exception as e:
-            logger.error(f"Error in create_pooling: {str(e)}")
+        generator = await self.openai_serving_chat.create_chat_completion(
+            request, raw_request
+        )
+        if isinstance(generator, ErrorResponse):
             return JSONResponse(
-                content={"error": "An unexpected error occurred during pooling."},
-                status_code=500
+                content=generator.model_dump(), status_code=generator.code
             )
-
-    def sanitize_float_values(self, data):
-        if isinstance(data, dict):
-            return {k: self.sanitize_float_values(v) for k, v in data.items()}
-        elif isinstance(data, list):
-            return [self.sanitize_float_values(v) for v in data]
-        elif isinstance(data, float):
-            if math.isnan(data) or math.isinf(data):
-                return None
-            return data
+        if request.stream:
+            return StreamingResponse(content=generator, media_type="text/event-stream")
         else:
-            return data
+            assert isinstance(generator, ChatCompletionResponse)
+            return JSONResponse(content=generator.model_dump())
+
+    # @app.post("/v1/pooling")
+    # async def create_pooling(self,
+    #                          request: PoolingRequest, raw_request: Request):
+    #     await self._ensure_initialized()
+    #     try:
+    #         generator = await self.openai_serving_pooling.create_pooling(request, raw_request)
+    #         if isinstance(generator, ErrorResponse):
+    #             return JSONResponse(
+    #                 content=generator.model_dump(),
+    #                 status_code=generator.code,
+    #             )
+    #         elif isinstance(generator, PoolingResponse):
+    #             res = generator.model_dump()
+    #             logger.info(f"Response: {res}")
+    #             sanitized_data = self.sanitize_float_values(res)
+    #             return JSONResponse(content=sanitized_data)
+    #
+    #         assert_never(generator)
+    #     except Exception as e:
+    #         logger.error(f"Error in create_pooling: {str(e)}")
+    #         return JSONResponse(
+    #             content={"error": "An unexpected error occurred during pooling."},
+    #             status_code=500
+    #        )
+
+    # def sanitize_float_values(self, data):
+    #     if isinstance(data, dict):
+    #         return {k: self.sanitize_float_values(v) for k, v in data.items()}
+    #     elif isinstance(data, list):
+    #         return [self.sanitize_float_values(v) for v in data]
+    #     elif isinstance(data, float):
+    #         if math.isnan(data) or math.isinf(data):
+    #             return None
+    #         return data
+    #     else:
+    #         return data
 
 
 def parse_vllm_args(cli_args: Dict[str, str]):
@@ -312,7 +312,7 @@ def build_app(cli_args: Dict[str, str]) -> serve.Application:
 
 
 model = build_app({
-    "model": "jason9693/Qwen2.5-1.5B-apeach",
+    "model": "$HOME/models/Llama-3.2-1B-Instruct",
     "max-lora-rank": "32",
     "task": "classify",
     "enable-lora": "",
