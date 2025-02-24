@@ -315,7 +315,7 @@ model = build_app({
     "model": "meta-llama/Llama-3.2-1B-Instruct",
     "download-dir": "$HOME/models/Llama-3.2-1B-Instruct",
     "max-lora-rank": "32",
-    "task": "classify",
+    # "task": "classify",
     "enable-lora": "",
     "tensor-parallel-size": os.environ['TENSOR_PARALLELISM'],
     "pipeline-parallel-size": os.environ['PIPELINE_PARALLELISM'],
