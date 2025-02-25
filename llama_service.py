@@ -131,7 +131,7 @@ class S3LoadLoraAdapterRequest(LoadLoraAdapterRequest):
 
 
 @serve.deployment(name="VLLMDeployment")
-@serve.ingress(app)
+@serve.ingress(app, route_prefix="/llama")
 class VLLMDeployment:
     def __init__(
         self,
