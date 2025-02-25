@@ -113,38 +113,31 @@ class S3LoadLoraAdapterRequest(LoadLoraAdapterRequest):
     def _verify_unzip_and_update_model_file(local_lora_dir):
         lora_tensor_path = os.path.join(local_lora_dir, "adapter_model.safetensors")
         logger.info(f"Checking for adapter file at: {lora_tensor_path}")
-
         if not os.path.exists(lora_tensor_path):
-            logger.error("There was a problem while unzipping")
+            logger.error(f"There would be problem while unzipping")
             logger.error(
                 f"Directory contents: {os.listdir(local_lora_dir) if os.path.exists(local_lora_dir) else 'directory does not exist'}")
-            raise ValueError("There was a problem while unzipping")
+            raise ValueError(f"There would be problem while unzipping")
 
+        model_state_dict = load_file(lora_tensor_path)
         try:
-            model_state_dict = load_file(lora_tensor_path)
+            # Filter out non-LoRA keys
+            lora_state_dict = {k: v for k, v in model_state_dict.items() if 'lora_' in k or '.alpha' in k}
 
-            # Remove lm_head and embed_tokens weights
-            keys_to_remove = [key for key in model_state_dict.keys() if
+            # Additional check to remove any remaining non-LoRA keys
+            keys_to_remove = [key for key in lora_state_dict.keys() if
                               'model.embed_tokens.weight' in key or "lm_head" in key]
-            for key in keys_to_remove:
-                del model_state_dict[key]
+            for extra_key in keys_to_remove:
+                del lora_state_dict[extra_key]
 
-            # Keep only LoRA-related weights
-            lora_prefixes = ('lora_', 'bias_')
-            lora_state_dict = {k: v for k, v in model_state_dict.items() if k.startswith(lora_prefixes)}
-
-            # Check if any LoRA weights were found
-            if not lora_state_dict:
-                logger.warning("No LoRA weights found in the adapter_model.safetensors file")
-                return
-
-            # Save only the LoRA weights
+            # Save the updated LoRA-only model
             save_file(lora_state_dict, lora_tensor_path)
-            logger.info(f"Updated {lora_tensor_path} with only LoRA weights, removed lm_head and embed_tokens")
 
+            logger.info(f"LoRA adapter file updated successfully. Kept {len(lora_state_dict)} LoRA-related keys.")
         except Exception as e:
-            logger.error(f"Error during model update: {str(e)}")
-            raise ValueError("Error during model update for extracting LoRA weights and removing lm_head") from e
+            raise ValueError(f"Error during model update for filtering LoRA state dict: {str(e)}")
+        return
+
 
 @serve.deployment(name="VLLMDeployment")
 @serve.ingress(app)
