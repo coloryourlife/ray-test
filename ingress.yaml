@@ -24,10 +24,11 @@ spec:
                 name: llama-service-serve-svc # Serve service
                 port:
                   number: 8000 # default HTTP port number for serving requests
-          - path: /dashboard
+          - path: /
             pathType: Prefix
             backend:
               service:
                 name: llama-service-head-svc # Head service
                 port:
                   number: 8265 # default dashboard port
+          
