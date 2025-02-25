@@ -72,12 +72,9 @@ class S3LoadLoraAdapterRequest(LoadLoraAdapterRequest):
             async with session.client('s3', region_name=self.region) as s3_client:
                 async with aiofiles.open(temp_zip_path, 'wb') as f:
                     response = await s3_client.get_object(Bucket=self.bucket, Key=self.key)
-                    async with response['Body'] as stream:
-                        while True:
-                            chunk = await stream.read(8192)
-                            if not chunk:
-                                break
-                            await f.write(chunk)
+                    body = response['Body']
+                    async for chunk in body:
+                        await f.write(chunk)
 
             if not os.path.exists(temp_zip_path):
                 logger.error(f"Failed to download {self.key} from S3")

@@ -19,8 +19,8 @@ spec:
         ray_actor_options:
           num_gpus: 1
       runtime_env:
-        working_dir: "https://github.com/coloryourlife/ray-test/archive/refs/tags/v0.4.10.zip"
-        pip: ["vllm==0.7.0", "aioboto3==2.0.0", "aiofiles==23.2.1"]
+        working_dir: "https://github.com/coloryourlife/ray-test/archive/refs/tags/v0.4.11.zip"
+        pip: ["vllm==0.7.0", "aioboto3", "aiofiles"]
         env_vars:
           MODEL_ID: "meta-llama/Llama-3.2-1B-Instruct"
           TENSOR_PARALLELISM: "1"
