@@ -237,11 +237,11 @@ class VLLMDeployment:
         if request.model not in self.local_lora:
             await self.openai_serving_models.load_lora_adapter(
                 LoadLoraAdapterRequest(
-                    lora_name=request.lora_name,
-                    lora_path=f"/models/{request.lora_name}",
+                    lora_name=request.model,
+                    lora_path=f"/models/{request.model}",
                 )
             )
-            self.local_lora.add(request.lora_name)
+            self.local_lora.add(request.model)
         generator = await self.openai_serving_chat.create_chat_completion(
             request, raw_request
         )
