@@ -48,7 +48,7 @@ class S3LoadLoraAdapterRequest(LoadLoraAdapterRequest):
     region: str = Field(default="us-east-1")
 
     async def ensure_local_lora(self) -> "LoadLoraAdapterRequest":
-        local_lora_path = os.path.abspath(os.path.join("/tmp", self.lora_path))
+        local_lora_path = os.path.abspath(os.path.join("/models", self.lora_path))
         logger.info(f"Local lora path: {local_lora_path}")
         if os.path.exists(local_lora_path):
             logger.info(f"{self.lora_name} exists")
