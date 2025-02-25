@@ -160,6 +160,7 @@ class VLLMDeployment:
         self.openai_serving_pooling = None
         self._is_initialized = False
         self.engine = AsyncLLMEngine.from_engine_args(self.engine_args)
+        self.local_lora = set('/models/Llama-3.2-1B-Instruct')
     
     async def _ensure_initialized(self):
         if not self._is_initialized:
@@ -188,14 +189,6 @@ class VLLMDeployment:
             chat_template_content_format="auto"
         )
 
-        # self.openai_serving_pooling = OpenAIServingPooling(
-        #     engine_client=self.engine,
-        #     model_config=self.model_config,
-        #     models=self.openai_serving_models,
-        #     request_logger=None,
-        #     chat_template=self.chat_template,
-        #     chat_template_content_format="auto"
-        # )
         self._is_initialized = True
 
     @app.post("/v1/load_lora_adapter")
@@ -209,6 +202,7 @@ class VLLMDeployment:
             # if lora_path not exist -> load_lora from S3
             # need to update the request -> need a path to S3
             response = await self.openai_serving_models.load_lora_adapter(lora_request)
+            self.local_lora.add(lora_request.lora_name)
             if isinstance(response, ErrorResponse):
                 return JSONResponse(content=response.model_dump(),
                                     status_code=response.code)
@@ -227,6 +221,7 @@ class VLLMDeployment:
         logger.info(f"Request: {request}")
         await self._ensure_initialized()
         response = await self.openai_serving_models.unload_lora_adapter(request)
+        self.local_lora.remove(request.lora_name)
         if isinstance(response, ErrorResponse):
             return JSONResponse(content=response.model_dump(),
                                 status_code=response.code)
@@ -239,6 +234,14 @@ class VLLMDeployment:
     ):
         logger.info(f"Request: {request}")
         await self._ensure_initialized()
+        if request.model not in self.local_lora:
+            await self.openai_serving_models.load_lora_adapter(
+                LoadLoraAdapterRequest(
+                    lora_name=request.lora_name,
+                    lora_path=f"/models/{request.lora_name}",
+                )
+            )
+            self.local_lora.add(request.lora_name)
         generator = await self.openai_serving_chat.create_chat_completion(
             request, raw_request
         )
@@ -251,43 +254,6 @@ class VLLMDeployment:
         else:
             assert isinstance(generator, ChatCompletionResponse)
             return JSONResponse(content=generator.model_dump())
-
-    # @app.post("/v1/pooling")
-    # async def create_pooling(self,
-    #                          request: PoolingRequest, raw_request: Request):
-    #     await self._ensure_initialized()
-    #     try:
-    #         generator = await self.openai_serving_pooling.create_pooling(request, raw_request)
-    #         if isinstance(generator, ErrorResponse):
-    #             return JSONResponse(
-    #                 content=generator.model_dump(),
-    #                 status_code=generator.code,
-    #             )
-    #         elif isinstance(generator, PoolingResponse):
-    #             res = generator.model_dump()
-    #             logger.info(f"Response: {res}")
-    #             sanitized_data = self.sanitize_float_values(res)
-    #             return JSONResponse(content=sanitized_data)
-    #
-    #         assert_never(generator)
-    #     except Exception as e:
-    #         logger.error(f"Error in create_pooling: {str(e)}")
-    #         return JSONResponse(
-    #             content={"error": "An unexpected error occurred during pooling."},
-    #             status_code=500
-    #        )
-
-    # def sanitize_float_values(self, data):
-    #     if isinstance(data, dict):
-    #         return {k: self.sanitize_float_values(v) for k, v in data.items()}
-    #     elif isinstance(data, list):
-    #         return [self.sanitize_float_values(v) for v in data]
-    #     elif isinstance(data, float):
-    #         if math.isnan(data) or math.isinf(data):
-    #             return None
-    #         return data
-    #     else:
-    #         return data
 
 
 def parse_vllm_args(cli_args: Dict[str, str]):
