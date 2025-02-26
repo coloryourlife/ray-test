@@ -23,6 +23,8 @@ from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.engine.async_llm_engine import AsyncLLMEngine
 from vllm.entrypoints.openai.cli_args import make_arg_parser
 from vllm.entrypoints.openai.protocol import (
+    CompletionRequest,
+    CompletionResponse,
     ChatCompletionRequest,
     ChatCompletionResponse,
     ErrorResponse,
@@ -30,6 +32,7 @@ from vllm.entrypoints.openai.protocol import (
 from vllm.entrypoints.openai.serving_models import (BaseModelPath,
                                                     OpenAIServingModels)
 from vllm.entrypoints.openai.serving_chat import OpenAIServingChat
+form vllm.entrypoints.openai.serving_completion import OpenAIServingCompletion
 from vllm.entrypoints.openai.serving_pooling import OpenAIServingPooling
 from vllm.entrypoints.openai.protocol import (LoadLoraAdapterRequest,
                                               UnloadLoraAdapterRequest,
@@ -148,6 +151,7 @@ class VLLMDeployment:
         self.model_config = None
         self.openai_serving_models = None
         self.openai_serving_chat = None
+        self.openai_serving_completion = None
         self.openai_serving_pooling = None
         self._is_initialized = False
         self.engine = AsyncLLMEngine.from_engine_args(self.engine_args)
@@ -178,6 +182,13 @@ class VLLMDeployment:
             request_logger=None,
             chat_template=self.chat_template,
             chat_template_content_format="auto"
+        )
+
+        self.openai_serving_completion = OpenAIServingCompletion(
+            engine_client=self.engine,
+            model_config=self.model_config,
+            models=self.openai_serving_models,
+            request_logger=None,
         )
 
         self._is_initialized = True
@@ -218,6 +229,19 @@ class VLLMDeployment:
                                 status_code=response.code)
 
         return Response(status_code=200, content=response)
+
+    @app.post("/v1/completions")
+    async def create_completion(self, request: CompletionRequest, raw_request: Request):
+        logger.info(f"Request: {request}")
+        await self._ensure_initialized()
+        generator = await self.openai_serving_completion.create_completion(request, raw_request)
+        if isinstance(generator, ErrorResponse):
+            return JSONResponse(content=generator.model_dump(),
+                                status_code=generator.code)
+        elif isinstance(generator, CompletionResponse):
+            return JSONResponse(content=generator.model_dump())
+
+        return StreamingResponse(content=generator, media_type="text/event-stream")
 
     @app.post("/v1/chat/completions")
     async def create_chat_completion(
