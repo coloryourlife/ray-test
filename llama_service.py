@@ -7,6 +7,8 @@ import zipfile
 import math
 
 from typing import Dict, Optional
+
+import ray
 from typing_extensions import assert_never
 import logging
 
@@ -53,86 +55,6 @@ class S3LoadLoraAdapterRequest(LoadLoraAdapterRequest):
     key: str
     region: str = Field(default="us-east-1")
 
-    async def ensure_local_lora(self) -> "LoadLoraAdapterRequest":
-        local_lora_path = os.path.abspath(os.path.join("/models", self.lora_path))
-        logger.info(f"Local lora path: {local_lora_path}")
-        if os.path.exists(local_lora_path):
-            logger.info(f"{self.lora_name} exists")
-            return LoadLoraAdapterRequest(
-                lora_name=self.lora_name,
-                lora_path=local_lora_path
-            )
-        if not self.key:
-            logger.error(f"LoRA not found at {self.lora_path} and no S3 config provided")
-            raise ValueError(f"LoRA not found at {self.lora_path} and no S3 config provided")
-
-        os.makedirs(local_lora_path, exist_ok=True)
-        temp_zip_path = os.path.join(local_lora_path, "artifacts.zip")
-        
-        try:
-            logger.info("Downloading Lora Modules from S3")
-            session = aioboto3.Session()
-            async with session.client('s3', region_name=self.region) as s3_client:
-                async with aiofiles.open(temp_zip_path, 'wb') as f:
-                    response = await s3_client.get_object(Bucket=self.bucket, Key=self.key)
-                    body = response['Body']
-                    async for chunk in body:
-                        await f.write(chunk)
-
-            if not os.path.exists(temp_zip_path):
-                logger.error(f"Failed to download {self.key} from S3")
-                raise ValueError(f"Failed to download {self.key} from S3")
-
-            logger.info("Unzip artifacts")
-            with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
-                contents = zip_ref.namelist()
-                logger.info(f"Zip Contents: {contents}")
-                zip_ref.extractall(local_lora_path)
-                logger.info(f"Extracted to {local_lora_path}")
-
-            extracted_files = os.listdir(local_lora_path)
-            logger.info(f"Extracted Files: {extracted_files}")
-
-            await self._verify_unzip_and_update_model_file(local_lora_path)
-            
-            logger.info(f"Remove {temp_zip_path} from the local.")
-            os.remove(temp_zip_path)
-
-        except Exception as e:
-            if os.path.exists(temp_zip_path):
-                os.remove(temp_zip_path)
-            raise ValueError(f"Failed to download LoRA from S3: {str(e)}")
-        
-        return LoadLoraAdapterRequest(
-            lora_name=self.lora_name,
-            lora_path=local_lora_path,
-        )
-
-    @staticmethod
-    async def _verify_unzip_and_update_model_file(local_lora_dir):
-        lora_tensor_path = os.path.join(local_lora_dir, "adapter_model.safetensors")
-        logger.info(f"Checking for adapter file at: {lora_tensor_path}")
-        if not os.path.exists(lora_tensor_path):
-            logger.error("There would be problem while unzipping")
-            logger.error(f"Directory contents: {os.listdir(local_lora_dir) if os.path.exists(local_lora_dir) else 'directory does not exist'}")
-            raise ValueError("There would be problem while unzipping")
-
-        async with aiofiles.open(lora_tensor_path, 'rb') as f:
-            model_state_dict = load_file(await f.read())
-        try:
-            lora_state_dict = {k: v for k, v in model_state_dict.items() if 'lora_' in k or '.alpha' in k}
-            keys_to_remove = [key for key in lora_state_dict.keys() if 'model.embed_tokens.weight' in key or "lm_head" in key]
-            for extra_key in keys_to_remove:
-                del lora_state_dict[extra_key]
-
-            async with aiofiles.open(lora_tensor_path, 'wb') as f:
-                await f.write(save_file(lora_state_dict))
-
-            logger.info(f"LoRA adapter file updated successfully. Kept {len(lora_state_dict)} LoRA-related keys.")
-        except Exception as e:
-            raise ValueError(f"Error during model update for filtering LoRA state dict: {str(e)}")
-
-
 @serve.deployment(name="VLLMDeployment")
 @serve.ingress(app)
 class VLLMDeployment:
@@ -156,6 +78,7 @@ class VLLMDeployment:
         self._is_initialized = False
         self.engine = AsyncLLMEngine.from_engine_args(self.engine_args)
         self.local_lora = set('/models/Llama-3.2-1B-Instruct')
+        self.download_worker = DownloadWorker.remote()
     
     async def _ensure_initialized(self):
         if not self._is_initialized:
@@ -194,27 +117,30 @@ class VLLMDeployment:
         self._is_initialized = True
 
     @app.post("/v1/load_lora_adapter")
-    async def load_lora_adapter(self,
-                                request: S3LoadLoraAdapterRequest,
-                                raw_request: Request):
-        logger.info(f"Request: {request}")
+    async def load_lora_adapter(self, request: S3LoadLoraAdapterRequest, raw_request: Request):
         await self._ensure_initialized()
         try:
-            lora_request = await request.ensure_local_lora()
-            # if lora_path not exist -> load_lora from S3
-            # need to update the request -> need a path to S3
+            local_lora_path = os.path.abspath(os.path.join("/models", request.lora_path))
+            if not os.path.exists(local_lora_path):
+                os.makedirs(local_lora_path, exist_ok=True)
+                # Use the DownloadWorker to download, extract, and verify asynchronously
+                local_lora_path = await self.download_worker.download_and_extract.remote(
+                    request.bucket, request.key, local_lora_path
+                )
+
+            lora_request = LoadLoraAdapterRequest(
+                lora_name=request.lora_name,
+                lora_path=local_lora_path
+            )
             response = await self.openai_serving_models.load_lora_adapter(lora_request)
             self.local_lora.add(lora_request.lora_name)
+
             if isinstance(response, ErrorResponse):
-                return JSONResponse(content=response.model_dump(),
-                                    status_code=response.code)
+                return JSONResponse(content=response.model_dump(), status_code=response.code)
 
             return Response(status_code=200, content=response)
         except ValueError as e:
-            return JSONResponse(
-                content={"error": str(e)},
-                status_code=400,
-            )
+            return JSONResponse(content={"error": str(e)}, status_code=400)
 
     @app.post("/v1/unload_lora_adapter")
     async def unload_lora_adapter(self,
@@ -269,6 +195,60 @@ class VLLMDeployment:
         else:
             assert isinstance(generator, ChatCompletionResponse)
             return JSONResponse(content=generator.model_dump())
+
+
+@ray.remote
+class DownloadWorker:
+    def __init__(self):
+        self.session = aioboto3.Session()
+
+    async def download_file(self, bucket, key, destination):
+        async with self.session.client('s3') as s3:
+            await s3.download_file(bucket, key, destination)
+        return destination
+
+    async def download_and_extract(self, bucket, key, local_lora_path):
+        temp_zip_path = os.path.join(local_lora_path, "artifacts.zip")
+        try:
+            await self.download_file(bucket, key, temp_zip_path)
+
+            with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
+                zip_ref.extractall(local_lora_path)
+
+            await self._verify_unzip_and_update_model_file(local_lora_path)
+
+            os.remove(temp_zip_path)
+            return local_lora_path
+        except Exception as e:
+            if os.path.exists(temp_zip_path):
+                os.remove(temp_zip_path)
+            raise ValueError(f"Failed to download and extract LoRA from S3: {str(e)}")
+
+    @staticmethod
+    async def _verify_unzip_and_update_model_file(local_lora_dir):
+        lora_tensor_path = os.path.join(local_lora_dir, "adapter_model.safetensors")
+        logger.info(f"Checking for adapter file at: {lora_tensor_path}")
+        if not os.path.exists(lora_tensor_path):
+            logger.error("There would be problem while unzipping")
+            logger.error(
+                f"Directory contents: {os.listdir(local_lora_dir) if os.path.exists(local_lora_dir) else 'directory does not exist'}")
+            raise ValueError("There would be problem while unzipping")
+
+        async with aiofiles.open(lora_tensor_path, 'rb') as f:
+            model_state_dict = load_file(await f.read())
+        try:
+            lora_state_dict = {k: v for k, v in model_state_dict.items() if 'lora_' in k or '.alpha' in k}
+            keys_to_remove = [key for key in lora_state_dict.keys() if
+                              'model.embed_tokens.weight' in key or "lm_head" in key]
+            for extra_key in keys_to_remove:
+                del lora_state_dict[extra_key]
+
+            async with aiofiles.open(lora_tensor_path, 'wb') as f:
+                await f.write(save_file(lora_state_dict))
+
+            logger.info(f"LoRA adapter file updated successfully. Kept {len(lora_state_dict)} LoRA-related keys.")
+        except Exception as e:
+            raise ValueError(f"Error during model update for filtering LoRA state dict: {str(e)}")
 
 
 def parse_vllm_args(cli_args: Dict[str, str]):
