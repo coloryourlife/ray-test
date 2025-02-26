@@ -32,7 +32,7 @@ from vllm.entrypoints.openai.protocol import (
 from vllm.entrypoints.openai.serving_models import (BaseModelPath,
                                                     OpenAIServingModels)
 from vllm.entrypoints.openai.serving_chat import OpenAIServingChat
-form vllm.entrypoints.openai.serving_completion import OpenAIServingCompletion
+from vllm.entrypoints.openai.serving_completion import OpenAIServingCompletion
 from vllm.entrypoints.openai.serving_pooling import OpenAIServingPooling
 from vllm.entrypoints.openai.protocol import (LoadLoraAdapterRequest,
                                               UnloadLoraAdapterRequest,
