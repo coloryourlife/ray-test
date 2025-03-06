@@ -2,6 +2,10 @@ apiVersion: ray.io/v1
 kind: RayService
 metadata:
   name: llama-service
+  # labels for kuberay api server
+  labels:
+    app.kubernetes.io/name: kuberay
+    kubernetes.io/managed-by: kuberay
 spec:
   serveConfigV2: |
     applications:
